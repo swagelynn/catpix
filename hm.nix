@@ -18,11 +18,10 @@ with lib; {
     home.packages = [catpix];
 
     home.activation.catpixGenerateSettings = lib.hm.dag.entryAfter ["writeBoundary"] ''
-      mkdir -p $HOME/.cache/catpix
-      ${catpix}/bin/catpix > $HOME/.cache/catpix/stylix-settings.json
+      ${catpix}/bin/catpix > /tmp/catpix-nix.json
       echo "done !!!"
     '';
 
-    home-manager.firefox.extensions.settings."stylix".settings = builtins.fromJSON (builtins.readFile "$HOME/.cache/catpix/stylix-settings.json");
+    home-manager.firefox.extensions.settings."stylix".settings = builtins.fromJSON (builtins.readFile "/tmp/catpix-nix.json");
   };
 }
