@@ -3,10 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"os/user"
+	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"path/filepath"
 )
 
 type Style struct {
@@ -80,9 +85,14 @@ var colors map[string]string = map[string]string{
 	"accent":    "base0E",
 }
 
-// currently from a file, will implement fetching later
 func loadImport() []Style {
-	data, _ := os.ReadFile("/home/maddie/Downloads/import.json")
+	resp, err := http.Get("https://github.com/catppuccin/userstyles/releases/download/all-userstyles-export/import.json")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(resp.Body)
 
 	styleParse := []Style{}
 
@@ -92,21 +102,53 @@ func loadImport() []Style {
 }
 
 func readBase16() map[string]string {
-	path := "/home/maddie/Downloads/gruvbox-dark-soft.yaml"
+	user, _ := user.Current()
 
-	data, _ := os.ReadFile(path)
+	data, _ := os.ReadFile("/home/" + user.Username + "/.config/stylix/palette.json")
 
-	unm := struct {
-		Palette map[string]string `yaml:"palette"`
-	}{}
+	unm := map[string]string{}
 
 	yaml.Unmarshal(data, &unm)
 
-	return unm.Palette
+	return unm
 }
 
+func loadCustomStyles() []Style {
+	out := []Style{}
+
+	entries, err := os.ReadDir("customstyles")
+	if err != nil {
+		return out
+	}
+
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+
+		ext := filepath.Ext(e.Name())
+		if ext != ".css" && ext != ".scss" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join("customstyles", e.Name()))
+		if err != nil {
+			continue
+		}
+
+		out = append(out, Style{
+			Enabled:    true,
+			Name:       strings.TrimSuffix(e.Name(), ext),
+			SourceCode: string(data),
+		})
+	}
+
+	return out
+}
+
+
 func main() {
-	styles := loadImport()
+	styles := append(loadImport(), loadCustomStyles()...)
 
 	modCol := []Style{}
 
@@ -118,9 +160,14 @@ func main() {
 		}
 
 		for col, key := range colors {
-			s.SourceCode = strings.ReplaceAll(s.SourceCode, "@"+col, palette[key])
-		}
+			if col == "accent" {
+				reg := regexp.MustCompile(`\@accent(\)|\:|\!|\,|\ \=|\ \!)`)
 
+				s.SourceCode = reg.ReplaceAllString(s.SourceCode, "#"+palette[key]+"$1")
+			} else {
+				s.SourceCode = strings.ReplaceAll(s.SourceCode, "@"+col, "#"+palette[key])
+			}
+		}
 		modCol = append(modCol, s)
 	}
 
